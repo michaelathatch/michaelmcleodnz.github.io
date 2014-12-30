@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Hierojs Test Suite</title>
+		<style>svg a:hover{fill:#00f}</style>
+		<script src="resources.js"></script>
+		<script src="glyphs.js"></script>
+		<script src="hiero.js"></script>
+		<script src="main.js"></script>
+	</head>
+	<body>
+		<p style="margin:10px;display:inline-block;vertical-align:top;">
+			Choose a glyph to display: <input id="input"/>
+		</p>
+		<div id="output" style="margin:10px;display:inline-block;vertical-align:top;"></div>
+		<div style="margin:50px;display:inline-block;vertical-align:top;"></div>
+		<div style="display:inline-block;vertical-align:top;">
+			<p>Type in transliteration or Gardiner code,<br/>
+			or click on a glyph from the list below.</p>
+			<p>(Note: Currently only one glyph displays at a time.)<br/>
+			(Note II: SVG pictures don't display on IE8 or crappier.)</p>
+		</div>
+		<hr/>
+		<div id="signlist"></div>
+		<div id="extended"></div>
+	</body>
+</html>
