@@ -1,4 +1,5 @@
-//Globals:
+// ----- GLOBAL VARIABLES ----- //
+
 var quadrantHeight = 1000; //Max height for path data and viewboxes
 var blankGlyph = { path: "", w: 0, h: 0 }; //Represents a null glyph
 var renderHeight = 48; //Default rendering height
@@ -9,10 +10,47 @@ var renderSpacing = 5; //Default rendering space
 //From resources.js: var gardiner = JSON object listing basic Gardiner code by section
 //From resources.js: var dictionary = JSON array of entries in the Dickson Dictionary
 
-//Tests MdC or translit
-function test(mdc) {
+//Alphabet maps from resources.js: toTranslit, fromTranslitCaps, fromTranslitNoCaps
+
+// ----- HELPER METHODS ----- //
+
+//Test if mdc represnts valid glyph or transliteration
+function isGlyph(mdc) {
 	return (glyphs[mdc] || translit[mdc]);
 }
+
+//Add default values to an options object
+function extend(options, defaults) {
+	var options = options ? options : defaults;
+	for(var prop in defaults) {
+		options[prop] = typeof(options[prop]) !== 'undefined' ? options[prop] : defaults[prop];
+	}
+	return options;
+}
+
+//Convert MdC into rendered transliteration
+function transliterate(mdc) {
+	return convert(mdc, toTranslit);
+}
+
+//Convert rendered transliteration into MdC
+function untransliterate(mdc, ignoreCaps) {
+	return convert(mdc, (ignoreCaps ? fromTranslitNoCaps : fromTranslitCaps));
+}
+
+//Replace all keys in the string with their corresponding values
+function convert(str, map) {
+	var result = "";
+	for(var i = 0; i < str.length; i++) {
+		result += map[str.slice(i, i + 2)] || map[str.charAt(i)] || str.charAt(i);
+		if(map[str.slice(i, i + 2)]) {
+			i++;
+		}
+	}
+	return result;
+}
+
+// ----- RENDERING METHODS ----- //
 
 //Renders a single hieroglyph
 function renderSingle(mdc, options) {
@@ -24,9 +62,9 @@ function renderSingle(mdc, options) {
 	var g = glyphs[mdc] ? glyphs[mdc] : glyphs[translit[mdc]] ? glyphs[translit[mdc]] : blankGlyph;
 	var tw = o.centre ? (quadrantHeight - g.w)/2 : 0;
 	var th = o.centre ? (quadrantHeight - g.h)/2 : (quadrantHeight - g.h);
-	return "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" \
-			width=\"" + o.height + "\" height=\"" + o.height + "\" viewbox=\"0 0 " + quadrantHeight + " " + quadrantHeight + "\">\
-			<path d=\"" + g.path + "\" fill=\"" + o.fill + "\" transform=\"translate(" + tw + " " + th + ")\"/>\
+	return "<svg xmlns='http://www.w3.org/2000/svg' version='1.1' \
+			width='" + o.height + "' height='" + o.height + "' viewbox='0 0 " + quadrantHeight + " " + quadrantHeight + "'>\
+			<path d='" + g.path + "' fill='" + o.fill + "' transform='translate(" + tw + " " + th + ")'/>\
 			</svg>";
 }
 
@@ -34,9 +72,9 @@ function renderSingle(mdc, options) {
 function renderLine(mdc, options) {
 	var o = extend(options, {
 		height: renderHeight,
+		spacing: renderSpacing,
 		fill: "#000",
 		centre: true,
-		spacing: renderSpacing,
 		reverse: false
 	});
 	var a = mdc.split(/[ *-]/);
@@ -46,18 +84,64 @@ function renderLine(mdc, options) {
 		var g = glyphs[a[i]] ? glyphs[a[i]] : glyphs[translit[a[i]]] ? glyphs[translit[a[i]]] : blankGlyph;
 		var tw = totalWidth;
 		var th = o.centre ? (quadrantHeight - g.h)/2 : (quadrantHeight - g.h);
-		result += "<path d=\"" + g.path + "\" fill=\"" + o.fill + "\" transform=\"translate(" + tw + " " + th + ")\"/>";
+		result += "<path d='" + g.path + "' fill='" + o.fill + "' transform='translate(" + tw + " " + th + ")'/>";
 		totalWidth += parseFloat(g.w) + o.spacing * quadrantHeight/o.height;
 	}
-	return "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" \
-			width=\"" + (totalWidth * o.height/quadrantHeight) + "\" height=\"" + o.height + "\" \
-			viewbox=\"0 0 " + totalWidth + " " + quadrantHeight + "\">" +
-			(o.reverse ? "<g transform=\"scale(-1,1)translate("+(-totalWidth)+")\">" : "") +
+	return "<svg xmlns='http://www.w3.org/2000/svg' version='1.1' \
+			width='" + (totalWidth * o.height/quadrantHeight) + "' height='" + o.height + "' \
+			viewbox='0 0 " + totalWidth + " " + quadrantHeight + "'>" +
+			(o.reverse ? "<g transform='scale(-1,1)translate("+(-totalWidth)+")'>" : "") +
 			result + (o.reverse ? "</g>" : "") + "</svg>";
 }
 
-//Display matching dictionary entries (too slow to be dynamic for short translit)
-function displayMatches(mdc, options) {
+//Renders the signs in the basic Gardiner sign list by section
+function renderSignList(options) {
+	var o = extend(options, {
+		height: renderHeight,
+		centre: true
+	});
+	var result = "<hr/>SIGNS BY GARDINER CLASSIFICATION: <hr/>";
+	for(section in gardiner) {
+		result += section + "<hr/>";
+		for(g in gardiner[section]) {
+			var tw = o.centre ? (quadrantHeight - glyphs[gardiner[section][g]].w)/2 : 0;
+			var th = o.centre ? (quadrantHeight - glyphs[gardiner[section][g]].h)/2 : (quadrantHeight - g.h);
+			result += "<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' version='1.1' \
+						width='" + o.height + "' height='" + o.height + "' viewbox='0 0 " + quadrantHeight + " " + quadrantHeight + "'>\
+						<a xlink:href='#" + gardiner[section][g] + "' xlink:title='" + gardiner[section][g] + "'>\
+						<rect opacity='0' width='" + quadrantHeight + "' height='" + quadrantHeight + "'/>\
+						<path d='" + glyphs[gardiner[section][g]].path + "' transform='translate(" + tw + " " + th + ")'/>\
+						</a></svg>";
+		}
+		result += "<hr/>";
+	}
+	return result;
+}
+
+//Renders the complete JSesh implementation of the Hieroglyphica
+function renderAllSigns(options) {
+	var o = extend(options, {
+		height: renderHeight,
+		centre: true
+	});
+	var result = "<hr/>FULL <a href='http://jsesh.qenherkhopeshef.org/' target='_blank'>JSESH</a> \
+				/ <a href='http://hieroglyphes.pagesperso-orange.fr/Hieroglyphica%20=%20A.htm' target='_blank'>HIEROGLYPHICA</a> \
+				SIGN LIST: <hr/>";
+	for(g in glyphs) {
+		var tw = o.centre ? (quadrantHeight - glyphs[g].w)/2 : 0;
+		var th = o.centre ? (quadrantHeight - glyphs[g].h)/2 : (quadrantHeight - g.h);
+		result += "<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' version='1.1' \
+					width='" + o.height + "' height='" + o.height + "' viewbox='0 0 " + quadrantHeight + " " + quadrantHeight + "'>\
+					<a xlink:href='#" + g + "' xlink:title='" + g + "'>\
+					<rect opacity='0' width='" + quadrantHeight + "' height='" + quadrantHeight + "'/>\
+					<path d='" + glyphs[g].path + "' transform='translate(" + tw + " " + th + ")'/>\
+					</a></svg>";
+	}
+	return result;
+}
+
+//Renders matching dictionary entries (too slow to be dynamic for short translit)
+function findAndRenderMatches(mdc, options) {
 	var o = extend(options, {
 		fontSize: "1em",
 		highlight: "#eee"
@@ -66,10 +150,10 @@ function displayMatches(mdc, options) {
 		return "";
 	}
 	var matches = findMatches(mdc);
-	var result = "<p style=\"font-size:" + o.fontSize + "\">" + matches.length + " matches found:</p>";
+	var result = "<p style='font-size:" + o.fontSize + "'>" + matches.length + " matches found for " + transliterate(mdc) + " (" + mdc + "):</p>";
 	for(var i in matches) {
-		var highlight = translate(matches[i].tlit).replace(translate(mdc), "<span style=background-color:" + o.highlight + ">" + translate(mdc) + "</span>");
-		result += "<p style=\"font-size:" + o.fontSize + ";margin:0\">" + highlight + ": " + renderLine(matches[i].base, options) + " " + matches[i].def + "</p><br/>";
+		var highlight = transliterate(matches[i].tlit).replace(transliterate(mdc), "<span style=background-color:" + o.highlight + ">" + transliterate(mdc) + "</span>");
+		result += "<p style='font-size:" + o.fontSize + ";margin:0'>" + highlight + ": " + renderLine(matches[i].base, options) + " " + matches[i].def + "</p><br/>";
 	}
 	return result;
 }
@@ -78,7 +162,7 @@ function displayMatches(mdc, options) {
 function findMatches(mdc) {
 	var matches = [];
 	var count = 0;
-	var mdc = mdc.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&"); //Escape for regex
+	var mdc = mdc.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&"); //Escape regex characters
 	//Complete match:
 	for(var entry in dictionary) {
 		if(dictionary[entry].tlit == mdc) {
@@ -110,102 +194,70 @@ function findMatches(mdc) {
 	return matches;
 }
 
-//Renders the complete JSesh implementation of the Hieroglyphica
-function renderAllSigns(options) {
-	var o = extend(options, {
-		height: renderHeight,
-		centre: true
-	});
-	var result = "<hr/>FULL <a href='http://jsesh.qenherkhopeshef.org/'>JSESH</a> / <a href='http://hieroglyphes.pagesperso-orange.fr/Hieroglyphica%20=%20A.htm'>HIEROGLYPHICA</a> SIGN LIST: <hr/>";
-	for(g in glyphs) {
-		var tw = o.centre ? (quadrantHeight - glyphs[g].w)/2 : 0;
-		var th = o.centre ? (quadrantHeight - glyphs[g].h)/2 : (quadrantHeight - g.h);
-		result += "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" version=\"1.1\" \
-					width=\"" + o.height + "\" height=\"" + o.height + "\" viewbox=\"0 0 " + quadrantHeight + " " + quadrantHeight + "\">\
-					<a xlink:href=\"#" + g + "\" xlink:title=\"" + g + "\">\
-					<rect opacity=\"0\" width=\"" + quadrantHeight + "\" height=\"" + quadrantHeight + "\"/>\
-					<path d=\"" + glyphs[g].path + "\" transform=\"translate(" + tw + " " + th + ")\"/>\
-					</a></svg>";
-	}
-	return result;
-}
-
-//Renders the signs in the basic Gardiner sign list by section
-function renderSignList(options) {
-	var o = extend(options, {
-		height: renderHeight,
-		centre: true
-	});
-	var result = "<hr/>SIGNS BY GARDINER CLASSIFICATION: <hr/>";
-	for(section in gardiner) {
-		result += section + "<hr/>";
-		for(g in gardiner[section]) {
-			var tw = o.centre ? (quadrantHeight - glyphs[gardiner[section][g]].w)/2 : 0;
-			var th = o.centre ? (quadrantHeight - glyphs[gardiner[section][g]].h)/2 : (quadrantHeight - g.h);
-			result += "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" version=\"1.1\" \
-						width=\"" + o.height + "\" height=\"" + o.height + "\" viewbox=\"0 0 " + quadrantHeight + " " + quadrantHeight + "\">\
-						<a xlink:href=\"#" + gardiner[section][g] + "\" xlink:title=\"" + gardiner[section][g] + "\">\
-						<rect opacity=\"0\" width=\"" + quadrantHeight + "\" height=\"" + quadrantHeight + "\"/>\
-						<path d=\"" + glyphs[gardiner[section][g]].path + "\" transform=\"translate(" + tw + " " + th + ")\"/>\
-						</a></svg>";
+//Dynamically transliterate the contents of a text field element (remember to untransliterate contents before usage)
+function renderAsTransliteration(el) {
+	el.addEventListener ? el.addEventListener("keypress", pressHandler) : el.attachEvent("onkeypress", pressHandler);
+	el.addEventListener ? el.addEventListener("keydown", downHandler) : el.attachEvent("onkeydown", downHandler);
+	el.addEventListener ? el.addEventListener("paste", pasteHandler) : el.attachEvent("onpaste", pasteHandler);
+	function pressHandler(event) {
+		var key = String.fromCharCode(event.keyCode || event.charCode);
+		if(/[\w.=]/.test(key)) {
+			event.preventDefault ? event.preventDefault() : event.returnValue = false; //OldIE
+			var start = this.selectionStart;
+			var end = this.value.length - this.selectionEnd;
+			if(this.value.charAt(start - 1) == '^') {
+				this.value = this.value.slice(0, start - 1) + transliterate('^' + key) + this.value.slice(el.value.length - end);
+			} else {
+				this.value = this.value.slice(0, start) + transliterate(key) + this.value.slice(el.value.length - end);
+			}
+			this.selectionStart = this.selectionEnd = el.value.length - end;
 		}
-		result += "<hr/>";
+		return false;
 	}
-	return result;
-}
-
-//Use the provided defaults unless they already exist in the options
-function extend(options, defaults) {
-	var options = options ? options : defaults;
-	for(var prop in defaults) {
-		options[prop] = typeof(options[prop]) !== 'undefined' ? options[prop] : defaults[prop];
-	}
-	return options;
-}
-
-//Convert MdC into rendered transliteration:
-function translate(mdc) {
-	var map = {
-		'A': '\u021D',
-		'i': '\u1F30',
-		'j': '\u1F30',
-		'a': '\u02C1',
-		'H': '\u1E25',
-		'x': '\u1E2B',
-		'X': '\u1E96',
-		'S': '\u0161',
-		'q': '\u1E33',
-		'K': '\u1E33',
-		'T': '\u1E6F',
-		'D': '\u1E0F',
-		'.': '\u00B7',
-		'=': '\u00B7',
-		'^': {
-			'A': '\u021D',
-			'i': '\u1F38',
-			'j': '\u1F38',
-			'a': '\u02C1',
-			'H': '\u1E24',
-			'x': '\u1E2A',
-			'X': "H\u0331",
-			'S': '\u0160',
-			'q': '\u1E32',
-			'K': '\u1E32',
-			'T': '\u1E6E',
-			'D': '\u1E0E',
-			'.': '\u00B7',
-			'=': '\u00B7'
-		}
-	};
-	var result = "";
-	for(var i = 0; i < mdc.length; i++) {
-		//If a * or ^ is found, treat the next character as a capital:
-		if(mdc.charAt(i)=='*' || mdc.charAt(i)=='^') {
-			i++;
-			result += map['^'][mdc.charAt(i)] ? map['^'][mdc.charAt(i)] : mdc.charAt(i).toUpperCase();
-		} else {
-			result += map[mdc.charAt(i)] ? map[mdc.charAt(i)] : mdc.charAt(i);
+	function downHandler(e) {
+		//Backspace:
+		if((event.keyCode || event.charCode) == 8) {
+			var start = this.selectionStart;
+			var end = this.selectionEnd;
+			if(start == end && (this.value.charAt(start - 1) == '\u0331' || this.value.charAt(start - 1) == '\u032D')) {
+				event.preventDefault ? event.preventDefault() : event.returnValue = false; //OldIE
+				this.value = this.value.slice(0, start - 2) + this.value.slice(end);
+				this.selectionStart = this.selectionEnd = start - 2;
+			}
+		//Below all works fine on Chrome, but not OldIE
+		//Delete:
+		} else if((event.keyCode || event.charCode) == 46) {
+			var start = this.selectionStart;
+			var end = this.selectionEnd;
+			if(start == end && (this.value.charAt(end + 1) == '\u0331' || this.value.charAt(end + 1) == '\u032D')) {
+				event.preventDefault ? event.preventDefault() : event.returnValue = false; //OldIE
+				this.value = this.value.slice(0, start) + this.value.slice(end + 2);
+				this.selectionStart = this.selectionEnd = start;
+			}
+		//Left:
+		} else if((event.keyCode || event.charCode) == 37) {
+			var start = this.selectionStart;
+			var end = this.selectionEnd;
+			if(start == end && (this.value.charAt(start - 1) == '\u0331' || this.value.charAt(start - 1) == '\u032D')) {
+				event.preventDefault ? event.preventDefault() : event.returnValue = false; //OldIE
+				this.selectionStart = this.selectionEnd = start - 2;
+			}
+		//Right:
+		} else if((event.keyCode || event.charCode) == 39) {
+			var start = this.selectionStart;
+			var end = this.selectionEnd;
+			if(start == end && (this.value.charAt(end + 1) == '\u0331' || this.value.charAt(end + 1) == '\u032D')) {
+				event.preventDefault ? event.preventDefault() : event.returnValue = false; //OldIE
+				this.selectionStart = this.selectionEnd = start + 2;
+			}
 		}
 	}
-	return result;
+	function pasteHandler() {
+		var end = this.value.length - this.selectionEnd;
+		setTimeout(function() {
+			el.value = transliterate(el.value);
+			el.selectionStart = el.value.length - end;
+			el.selectionEnd = el.value.length - end;
+		}, 1);
+	}
 }
