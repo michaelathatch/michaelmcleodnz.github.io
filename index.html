@@ -1,41 +1,353 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 	<head>
-		<meta charset="utf-8"/>
-		<meta name="viewport" content="width=device-width, initial-scale=1"/>
-		<title>Michael's GitHub Page</title>
-		<style>
-			body{
-				text-align:center;
-				background:#ED9;
+		<script src="common.js"></script>
+		<script src="glyphs.js"></script>
+		<script src="resources.js"></script>
+		<script src="lexer.js"></script>
+		<script id="PARSER.JS">
+function render(mdc, options) {
+	var quadrantHeight = 1800; //Max height for path data and viewboxes. UNEDITABLE
+	//Not used because max.w & max.h are used.
+	//TODO: make options relative to height, not quadrantHeight
+	var o = extend(options, {
+		height: 50,				//Render height - not propagated
+		spacing: 200,			//Space between signs
+		lineSpacing: 600,		//
+		colSpacing: 1000,		//used only for vertical
+		max: {w:2200, h:1800},	//max quadrant width and height without scaling
+		strokeWidth: 100,		//for cartouches, <hr/>s
+		fill: "black",			//Colour of all glyphs - not propagated (yet)
+		centre: true,			//Centre small signs
+		rightToLeft: false,		//Flip all glyphs - not propagated
+		vertical: false			//Reading direction
+	});
+	var p = Parser(mdc);
+	var content = nextInQueue()(p,o);
+	var result = "<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' version='1.1' " +
+				"width='" + (content.width() * o.height / quadrantHeight) + "' height='" + (content.height() * o.height / quadrantHeight) + "' " +
+				"viewbox='0 0 " + content.width() + " " + content.height() + "' fill='" + o.fill + "'>" +
+				(o.rightToLeft ? "<g transform='scale(-1,1)translate(" + (-content.width()) + ")'>" : "") +
+				content.render(0,0); + (o.rightToLeft ? "</g>" : "") + "</svg>";
+	return result;
+}
+
+function Parser(mdc) {
+	var counter = 0;
+	var tokens = lex(mdc);
+	return {
+		nextKey: function(key) {
+			return counter < tokens.length && tokens[counter].key === key;
+		},
+		prevKey: function(key) {
+			return counter > 0 && tokens[counter - 1].key === key;
+		},
+		getNext() {
+			if(counter < tokens.length - 1) {
+				counter++;
 			}
-			h1{
-				font-family:Papyrus;
-				font-size:7em;
-				margin:0px;
-				margin-top:-0.1em;
-				margin-bottom:-0.2em;
+			return tokens[counter - 1].value;
+		}
+	};
+}
+
+function nextInQueue(func) {
+	var queue = [parseDoc, parsePage, parseLine, parseBase, /*parseShade,*/ parseSub, parseJux, /*parseLigature, parseOverlay,*/ parsePrimary];
+	return (queue.indexOf(func) !== -1) ? queue[queue.indexOf(func) + 1] : parseDoc;
+}
+
+//helper funcs for w/h:
+function maxWidth(elements, c) {
+	var mw = 0;
+	for(e in elements) {
+		var w = elements[e].width(c);
+		if(w > mw) {
+			mw = w;
+		}
+	}
+	return mw;
+}
+function maxHeight(elements, c) {
+	var mh = 0;
+	for(e in elements) {
+		var h = elements[e].height(c);
+		if(h > mh) {
+			mh = h;
+		}
+	}
+	return mh;
+}
+function totalWidth(elements, spacing, c) {
+	var tw = 0;
+	for(var e in elements) {
+		tw += elements[e].width(c) + spacing;
+	}
+	tw -= elements[0] ? spacing : 0; //subtract last space, unless no elements.
+	return tw;
+}
+function totalHeight(elements, spacing, c) {
+	var th = 0;
+	for(var e in elements) {
+		th += elements[e].height(c) + spacing;
+	}
+	th -= elements[0] ? spacing : 0; //subtract last space, unless no elements.
+	return th;
+}
+
+//Whole document, made of pages:
+function parseDoc(p,o) {
+	var elements = [];
+	while(!p.nextKey('T_EOF')) {
+		elements.push(nextInQueue(parseDoc)(p,o));
+		elements.push({
+			width: function() {
+				return o.vertical ? o.strokeWidth : 0;
+			},
+			height: function() {
+				return o.vertical ? 0 : o.strokeWidth;
+			},
+			render: function(x,y) {
+				if(o.vertical) {
+					return "<line stroke='grey' stroke-width='" + o.strokeWidth + "' x1='" + x + "' y1='0' x2='" + x + "' y2='100%'/>";
+				}
+				return "<line stroke='grey' stroke-width='" + o.strokeWidth + "' x1='0' y1='" + y + "' x2='100%' y2='" + y + "'/>";
 			}
-			h2{
-				font-family:Papyrus;
-				margin:0px;
+		});
+	}
+	elements.pop();
+	return o.vertical ? jux(elements, o.colSpacing/2) : sub(elements, o.lineSpacing/2);
+}
+
+//Whole page, made of lines (ends with -!! or EOF):
+function parsePage(p,o) {
+	var elements = [];
+	while(!p.nextKey('T_EOF')) {
+		elements.push(nextInQueue(parsePage)(p,o));
+		if(p.nextKey('T_NEWPAGE')) {
+			p.getNext();
+			break;
+		}
+	}
+	return o.vertical ? jux(elements, o.colSpacing) : sub(elements, o.lineSpacing);
+}
+
+function parseLine(p,o) {
+	var elements = [];
+	while(!p.nextKey('T_EOF') && !p.nextKey('T_NEWPAGE')) {
+		elements.push(nextInQueue(parseLine)(p,o));
+		if(p.nextKey('T_NEWLINE')) {
+			p.getNext();
+			break;
+		}
+	}
+	var result = o.vertical ? sub(elements, o.spacing, o.centre, {w:o.max.w}) : jux(elements, o.spacing, o.centre, {h:o.max.h});
+	if(o.vertical) {
+		result.width = function() {
+			return o.max.w;
+		};
+	} else {
+		result.height = function() {
+			return o.max.h;
+		};
+	}
+	return result;
+}
+
+function parseBase(p,o) {
+	var quadrant = nextInQueue(parseBase)(p,o);
+	if(p.nextKey('T_CONCATENATION')) {
+		var elements = [quadrant];
+		while(p.nextKey('T_CONCATENATION')) {
+			p.getNext();
+			elements.push(nextInQueue(parseBase)(p,o));
+		}
+		return o.vertical ? sub(elements, o.spacing, o.centre, {w:o.max.w}) : jux(elements, o.spacing, o.centre, {h:o.max.h});
+	}
+	return quadrant;
+}
+
+//function parseShade(p,o) {}
+
+function parseSub(p,o) {
+	var quadrant = nextInQueue(parseSub)(p,o);
+	if(p.nextKey('T_SUBORDINATION')) {
+		var elements = [quadrant];
+		while(p.nextKey('T_SUBORDINATION')) {
+			p.getNext();
+			elements.push(nextInQueue(parseSub)(p,o));
+		}
+		return sub(elements, o.spacing, o.centre, {w:Math.min(o.max.w,maxWidth(elements))});
+	}
+	return quadrant;
+}
+
+function parseJux(p,o) {
+	var quadrant = nextInQueue(parseJux)(p,o);
+	if(p.nextKey('T_JUXTAPOSITION')) {
+		var elements = [quadrant];
+		while(p.nextKey('T_JUXTAPOSITION')) {
+			p.getNext();
+			elements.push(nextInQueue(parseJux)(p,o));
+		}
+		return jux(elements, o.spacing, o.centre, {h:Math.min(o.max.h,maxHeight(elements))});
+	}
+	return quadrant;
+}
+
+function sub(elements, spacing, centre, constraint) {
+	function scaled(c) {
+		return c.h && totalHeight(elements, spacing, constraint) > c.h;
+	}
+	function scale(c) {
+		return scaled(c) ? c.h / totalHeight(elements, spacing, constraint) : 1;
+	}
+	return {
+		width: function(c) {
+			c = c || {};
+			return maxWidth(elements, constraint) * scale(c);
+		},
+		height: function(c) {
+			c = c || {};
+			return c.h ? c.h : totalHeight(elements, spacing, constraint);
+		},
+		render: function(x,y,c) {
+			c = c || {};
+			if(!scaled(c) && c.h) {
+				spacing = (c.h - totalHeight(elements, 0, constraint)) / (elements.length - 1);
 			}
-		</style>
+			var rendering = scaled(c) ? "<g transform='scale(" + scale(c) + ")'>" : "";
+			for(var e = 0; e < elements.length; e++) {
+				var centreShift = centre ? (maxWidth(elements, constraint) - elements[e].width(constraint))/2 * scale(c) : 0;
+				rendering += elements[e].render(x/scale(c) + centreShift, y/scale(c), constraint);
+				y += (elements[e].height(constraint) + spacing) * scale(c);
+			}
+			return rendering + (scaled(c) ? "</g>" : "");
+		}
+	};
+}
+
+function jux(elements, spacing, centre, constraint) {
+	function scaled(c) {
+		return c.w && totalWidth(elements, spacing, constraint) > c.w;
+	}
+	function scale(c) {
+		return scaled(c) ? c.w / totalWidth(elements, spacing, constraint) : 1;
+	}
+	return {
+		width: function(c) {
+			c = c || {};
+			return c.w ? c.w : totalWidth(elements, spacing, constraint);
+		},
+		height: function(c) {
+			c = c || {};
+			return maxHeight(elements, constraint) * scale(c);
+		},
+		render: function(x,y,c) {
+			c = c || {};
+			if(!scaled(c) && c.w) {
+				spacing = (c.w - totalWidth(elements, 0, constraint)) / (elements.length - 1);
+			}
+			var rendering = scaled(c) ? "<g transform='scale(" + scale(c) + ")'>" : "";
+			for(var e = 0; e < elements.length; e++) {
+				var centreShift = (maxHeight(elements, constraint) - elements[e].height(constraint)) * scale(c) / (centre ? 2 : 1);
+				rendering += elements[e].render(x/scale(c), y/scale(c) + centreShift, constraint);
+				x += (elements[e].width(constraint) + spacing) * scale(c);
+			}
+			return rendering + (scaled(c) ? "</g>" : "");
+		}
+	};
+}
+
+//function parseLigature(p,o) {}
+//function parseOverlay(p,o) {}
+
+function parsePrimary(p,o) {
+	//GLYPH case:
+	if(p.nextKey('T_GLYPH')) {
+		var code = p.getNext();
+		var g = glyphs[code] ? glyphs[code] : glyphs[translit[code]] ? glyphs[translit[code]] :
+			//{w: o.max.h, h: o.max.h, p: "'/><rect opacity='0.5' width='" + o.max.h + "' height='" + o.max.h};
+			{w:0, h:0, p:""};
+		return {
+			width: function() {
+				return g.w;
+			},
+			height: function() {
+				return g.h;
+			},
+			render: function(x,y) {
+				return "<g transform='translate(" + x + "," + y + ")'>"+
+						"<rect opacity='0' width='" + g.w + "' height='" + g.h + "'/>"+
+						"<path d='" + g.p + "'/></g>";
+			}
+		};
+	}
+	//ERROR case:
+	p.getNext();
+	return {
+		width: function() { return 0; }, height: function() { return 0; }, render: function(x,y) { return ""; }
+	};
+	/*return {
+		width: function() {
+			return o.max.h;
+		},
+		height: function() {	
+			return o.max.h;
+		},
+		render: function(x,y) {
+			return "<g transform='translate(" + x + "," + y + ")'>" +
+					"<rect opacity='0.5' width='" + o.max.h + "' height='" + o.max.h + "'/>" +
+					"</g>";
+		}
+	};*/
+}
+		</script>
 	</head>
 	<body>
-		<img src="vibrant.svg" style="display:inline-block; width:12em;" alt="BookOfThoth.svg"/>
-		<span style="display:inline-block;">
-		<h1>Senet</h1>
-		<h2 id="waveText">currently available here!</h2>
-		</span>
-		<img src="original.svg" style="display:inline-block; width:12em;" alt="BookOfThoth.svg"/>
-		<br/><br/><br/><br/>
-		<a href="Senet.jar"><img src="senet.png" style="width:20em;"/><br/><br/>
-		Download Game!</a> - <a href="Instructions.pdf" target="_blank">Instructions</a> - 
-		<a href="https://www.java.com/en/download/" target="_blank">Download Java</a><br/><br/>
-		If Java is installed, simply open the Senet.jar file to play the game.<br><br/><br/><br/><br/><br/>
-		<a href="BoT/">Proceed to Book of Thoth test suite</a>
-		
-		<script type="text/javascript" src="wave.js"></script>
+		<form id="form" autocomplete="off">
+			<textarea id='input' rows='2' cols='80' onkeyup='toScreen()'></textarea>
+			<br/>
+			&nbsp;right<input id='r' type="checkbox" onchange='toScreen()'/>
+			&nbsp;&nbsp;vertical<input id='v' type="checkbox" onchange='toScreen()'/>
+			&nbsp;&nbsp;height&nbsp;<input id='h' type="text" value='50' size='4' width='4' onkeypress='enter()'/>px
+			&nbsp;&nbsp;&nbsp;color&nbsp;<input id='c' type="text" value='#000' size='4' width='4' onkeypress='enter()'/>hex
+		</form>
+		<br/>Result:<br/><br/>
+		<div id="parse_output"><svg height='0'></svg></div>
+		<br/>Data:<br/><br/>
+		<div id="lex_output"></div>
+		<script id="TO_SCREEN">
+			document.getElementById("form").addEventListener("submit", function(e) {
+				e.preventDefault();
+				toScreen();
+			});
+			
+			function toScreen() {
+				console.time('timer');
+				document.getElementById("parse_output").innerHTML = render(document.getElementById("input").value, {
+					rightToLeft: document.getElementById("r").checked,
+					vertical: document.getElementById("v").checked,
+					height: document.getElementById("h").value,
+					fill: document.getElementById("c").value
+				});
+				console.timeEnd('timer');
+				var tokens = lex(document.getElementById("input").value);
+				var result = "";
+				for(var i in tokens) {
+					result += tokens[i].position + ((tokens[i].key == 'T_ERROR') ? ". <span style='color:red'>\"" : ". ") +
+						tokens[i].key + ": \"" + tokens[i].value + ((tokens[i].key == 'T_ERROR') ? "\"</span><br/>" : "\"<br/>");
+				}
+				document.getElementById("lex_output").innerHTML = result;
+			}
+			
+			function enter(e) {
+				var event = e || window.event;
+				var charCode = event.which || event.keyCode;
+				if(charCode == '13') {
+					toScreen();
+					return false;
+				}
+			}
+		</script>
 	</body>
 </html>
